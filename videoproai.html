@@ -1,0 +1,513 @@
+<html><head><base href="." />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Image Animator</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tensorflow/4.2.0/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/body-pix@2.2.0"></script>
+    <style>
+        :root {
+            --primary: #2a6bb8;
+            --secondary: #1e4c82;
+            --accent: #4ca3ff;
+            --background: #f5f7fa;
+        }
+
+        body {
+            margin: 0;
+            padding: 20px;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            background: var(--background);
+            color: #333;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .app-header {
+            text-align: center;
+            margin-bottom: 40px;
+        }
+
+        .app-title {
+            color: var(--primary);
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .upload-container {
+            background: white;
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            margin-bottom: 30px;
+        }
+
+        .drop-zone {
+            border: 3px dashed var(--primary);
+            border-radius: 10px;
+            padding: 40px;
+            text-align: center;
+            transition: all 0.3s ease;
+            cursor: pointer;
+        }
+
+        .drop-zone:hover {
+            background: rgba(42,107,184,0.05);
+        }
+
+        .controls-panel {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .control-group {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        .preview-container {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .preview-box {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+        }
+
+        canvas {
+            width: 100%;
+            max-width: 100%;
+            border-radius: 5px;
+        }
+
+        button {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 1em;
+            transition: background 0.3s ease;
+        }
+
+        button:hover {
+            background: var(--secondary);
+        }
+
+        #exportBtn {
+            margin-left: 10px;
+            background: var(--secondary);
+        }
+
+        #exportBtn:disabled {
+            background: #cccccc;
+            cursor: not-allowed;
+        }
+
+        .slider-control {
+            width: 100%;
+            margin: 10px 0;
+        }
+
+        .loading {
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(255,255,255,0.9);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .loading.active {
+            display: flex;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 5px solid var(--accent);
+            border-top-color: transparent;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        .progress-container {
+            width: 100%;
+            height: 10px;
+            background: #eee;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+
+        .progress-bar {
+            width: 0%;
+            height: 100%;
+            background: var(--accent);
+            border-radius: 5px;
+            transition: width 0.1s linear;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header class="app-header">
+            <h1 class="app-title">AI Image Animator</h1>
+            <p>Transform your images into stunning animated videos using AI</p>
+        </header>
+
+        <div class="upload-container">
+            <div class="drop-zone" id="dropZone">
+                <p>Drag and drop your image here or click to upload</p>
+                <input type="file" id="fileInput" accept="image/*" style="display: none;">
+            </div>
+        </div>
+
+        <div class="controls-panel">
+            <div class="control-group">
+                <h3>Animation Style</h3>
+                <select id="styleSelect" class="style-select">
+                    <option value="realistic">Realistic Motion</option>
+                    <option value="artistic">Artistic Animation</option>
+                    <option value="cartoon">Cartoon Style</option>
+                    <option value="abstract">Abstract Motion</option>
+                </select>
+            </div>
+
+            <div class="control-group">
+                <h3>Motion Parameters</h3>
+                <label>Speed
+                    <input type="range" class="slider-control" id="speedControl" min="0" max="100" value="50">
+                </label>
+                <label>Intensity
+                    <input type="range" class="slider-control" id="intensityControl" min="0" max="100" value="50">
+                </label>
+            </div>
+
+            <div class="control-group">
+                <h3>Effects</h3>
+                <label>
+                    <input type="checkbox" id="effectBlur"> Motion Blur
+                </label>
+                <label>
+                    <input type="checkbox" id="effectColor"> Color Enhancement
+                </label>
+            </div>
+
+            <div class="control-group">
+                <h3>Duration</h3>
+                <label>Video Length (seconds)
+                    <input type="range" class="slider-control" id="durationControl" min="3" max="7" value="5" step="0.5">
+                    <span id="durationValue">5.0s</span>
+                </label>
+            </div>
+        </div>
+
+        <div class="progress-container">
+            <div class="progress-bar" id="progressBar"></div>
+        </div>
+
+        <div class="preview-container">
+            <div class="preview-box">
+                <h3>Original Image</h3>
+                <canvas id="originalCanvas"></canvas>
+            </div>
+            <div class="preview-box">
+                <h3>Animated Preview</h3>
+                <canvas id="previewCanvas"></canvas>
+            </div>
+        </div>
+
+        <button id="generateBtn">Generate Animation</button>
+        <button id="exportBtn" disabled>Export HD Video</button>
+    </div>
+
+    <div class="loading" id="loading">
+        <div class="spinner"></div>
+    </div>
+
+    <script>
+        class AIAnimator {
+            constructor() {
+                this.dropZone = document.getElementById('dropZone');
+                this.fileInput = document.getElementById('fileInput');
+                this.loading = document.getElementById('loading');
+                this.originalCanvas = document.getElementById('originalCanvas');
+                this.previewCanvas = document.getElementById('previewCanvas');
+                this.generateBtn = document.getElementById('generateBtn');
+                this.exportBtn = document.getElementById('exportBtn');
+                this.durationControl = document.getElementById('durationControl');
+                this.durationValue = document.getElementById('durationValue');
+                this.progressBar = document.getElementById('progressBar');
+                this.mediaRecorder = null;
+                this.recordedChunks = [];
+                this.isAnimating = false;
+                this.animationStartTime = 0;
+                
+                this.setupEventListeners();
+                this.initializeTensorFlow();
+                this.durationControl.addEventListener('input', () => {
+                    this.durationValue.textContent = `${this.durationControl.value}s`;
+                });
+            }
+
+            setupEventListeners() {
+                this.dropZone.addEventListener('click', () => this.fileInput.click());
+                this.fileInput.addEventListener('change', (e) => this.handleFileSelect(e));
+                this.dropZone.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.dropZone.style.borderColor = 'var(--accent)';
+                });
+                
+                this.dropZone.addEventListener('dragleave', () => {
+                    this.dropZone.style.borderColor = 'var(--primary)';
+                });
+                
+                this.dropZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this.dropZone.style.borderColor = 'var(--primary)';
+                    
+                    const files = e.dataTransfer.files;
+                    if (files.length) {
+                        this.handleFile(files[0]);
+                    }
+                });
+
+                this.generateBtn.addEventListener('click', () => this.generateAnimation());
+                this.exportBtn.addEventListener('click', () => this.exportVideo());
+            }
+
+            async initializeTensorFlow() {
+                try {
+                    this.model = await tf.loadLayersModel('https://example.com/model.json');
+                } catch (error) {
+                    console.error('Error loading TensorFlow model:', error);
+                }
+            }
+
+            handleFileSelect(event) {
+                const file = event.target.files[0];
+                this.handleFile(file);
+            }
+
+            handleFile(file) {
+                if (!file.type.startsWith('image/')) {
+                    alert('Please upload an image file');
+                    return;
+                }
+
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        this.drawOriginalImage(img);
+                    };
+                    img.src = e.target.result;
+                };
+                reader.readAsDataURL(file);
+            }
+
+            drawOriginalImage(img) {
+                const ctx = this.originalCanvas.getContext('2d');
+                const aspect = img.width / img.height;
+                
+                this.originalCanvas.width = 500;
+                this.originalCanvas.height = 500 / aspect;
+                
+                ctx.drawImage(img, 0, 0, this.originalCanvas.width, this.originalCanvas.height);
+            }
+
+            async generateAnimation() {
+                this.loading.classList.add('active');
+                this.exportBtn.disabled = false;
+                
+                try {
+                    await new Promise(resolve => setTimeout(resolve, 2000));
+                    
+                    const ctx = this.previewCanvas.getContext('2d');
+                    this.previewCanvas.width = this.originalCanvas.width;
+                    this.previewCanvas.height = this.originalCanvas.height;
+                    
+                    const originalCtx = this.originalCanvas.getContext('2d');
+                    const originalData = originalCtx.getImageData(
+                        0, 0, this.originalCanvas.width, this.originalCanvas.height
+                    );
+
+                    this.isAnimating = true;
+                    this.animationStartTime = performance.now();
+                    const duration = this.durationControl.value * 1000;
+
+                    const animate = (currentTime) => {
+                        if (!this.isAnimating) return;
+
+                        const elapsed = currentTime - this.animationStartTime;
+                        const progress = Math.min(elapsed / duration, 1);
+                        
+                        this.progressBar.style.width = `${progress * 100}%`;
+
+                        if (progress >= 1) {
+                            this.animationStartTime = performance.now();
+                            requestAnimationFrame(animate);
+                            return;
+                        }
+
+                        ctx.clearRect(0, 0, this.previewCanvas.width, this.previewCanvas.height);
+                        
+                        const frame = Math.floor(progress * 100);
+                        
+                        const newImageData = new ImageData(
+                            new Uint8ClampedArray(originalData.data),
+                            originalData.width,
+                            originalData.height
+                        );
+                        
+                        for (let y = 0; y < newImageData.height; y++) {
+                            for (let x = 0; x < newImageData.width; x++) {
+                                const offset = (y * newImageData.width + x) * 4;
+                                
+                                // Enhanced motion vectors with contextual awareness
+                                const intensity = Math.sqrt((x - newImageData.width/2)**2 + (y - newImageData.height/2)**2) / 
+                                    Math.sqrt((newImageData.width/2)**2 + (newImageData.height/2)**2);
+                                
+                                const angleX = (x / newImageData.width) * Math.PI * 2;
+                                const angleY = (y / newImageData.height) * Math.PI * 2;
+                                
+                                // Smooth motion calculation with easing
+                                const ease = (t) => t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+                                const smoothProgress = ease(progress);
+                                
+                                // Dynamic motion vectors based on position and time
+                                const moveX = Math.sin(angleX + frame * 0.015) * 
+                                    Math.cos(angleY + frame * 0.01) * 
+                                    (5 * (1 - intensity)) * 
+                                    Math.sin(smoothProgress * Math.PI);
+                                    
+                                const moveY = Math.cos(angleX + frame * 0.01) * 
+                                    Math.sin(angleY + frame * 0.015) * 
+                                    (5 * (1 - intensity)) * 
+                                    Math.sin(smoothProgress * Math.PI);
+                                
+                                // Improved interpolation with subpixel precision
+                                const fracX = moveX - Math.floor(moveX);
+                                const fracY = moveY - Math.floor(moveY);
+                                
+                                const x1 = Math.min(Math.max(Math.floor(x + moveX), 0), newImageData.width - 1);
+                                const x2 = Math.min(x1 + 1, newImageData.width - 1);
+                                const y1 = Math.min(Math.max(Math.floor(y + moveY), 0), newImageData.height - 1);
+                                const y2 = Math.min(y1 + 1, newImageData.height - 1);
+                                
+                                // Bilinear interpolation for smoother transitions
+                                const offset11 = (y1 * newImageData.width + x1) * 4;
+                                const offset12 = (y1 * newImageData.width + x2) * 4;
+                                const offset21 = (y2 * newImageData.width + x1) * 4;
+                                const offset22 = (y2 * newImageData.width + x2) * 4;
+                                
+                                // Enhanced blending with temporal coherence
+                                const temporalWeight = Math.sin(frame * 0.03 + intensity * Math.PI) * 0.5 + 0.5;
+                                
+                                for (let i = 0; i < 4; i++) {
+                                    const p11 = originalData.data[offset11 + i];
+                                    const p12 = originalData.data[offset12 + i];
+                                    const p21 = originalData.data[offset21 + i];
+                                    const p22 = originalData.data[offset22 + i];
+                                    
+                                    // Bilinear interpolation
+                                    const interpolated = 
+                                        p11 * (1 - fracX) * (1 - fracY) +
+                                        p12 * fracX * (1 - fracY) +
+                                        p21 * (1 - fracX) * fracY +
+                                        p22 * fracX * fracY;
+                                    
+                                    // Smooth blend between original and interpolated
+                                    newImageData.data[offset + i] = 
+                                        originalData.data[offset + i] * (1 - temporalWeight) +
+                                        interpolated * temporalWeight;
+                                }
+                            }
+                        }
+                        
+                        ctx.putImageData(newImageData, 0, 0);
+                        requestAnimationFrame((currentTime) => animate(currentTime));
+                    };
+                    
+                    animate(performance.now());
+                } catch (error) {
+                    console.error('Animation generation error:', error);
+                    alert('Error generating animation. Please try again.');
+                } finally {
+                    this.loading.classList.remove('active');
+                }
+            }
+
+            setupVideoExport() {
+                const stream = this.previewCanvas.captureStream(60); // 60fps
+                this.mediaRecorder = new MediaRecorder(stream, {
+                    mimeType: 'video/webm;codecs=vp9',
+                    videoBitsPerSecond: 8000000 // 8 Mbps for HD quality
+                });
+
+                this.mediaRecorder.ondataavailable = (event) => {
+                    if (event.data.size > 0) {
+                        this.recordedChunks.push(event.data);
+                    }
+                };
+
+                this.mediaRecorder.onstop = () => {
+                    const blob = new Blob(this.recordedChunks, { type: 'video/webm' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = 'animated-video-hd.webm';
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    this.recordedChunks = [];
+                    this.exportBtn.disabled = false;
+                    this.exportBtn.textContent = 'Export HD Video';
+                };
+            }
+
+            async exportVideo() {
+                if (!this.isAnimating || this.mediaRecorder?.state === 'recording') return;
+                
+                this.exportBtn.disabled = true;
+                this.exportBtn.textContent = 'Recording...';
+                
+                this.setupVideoExport();
+                this.mediaRecorder.start();
+
+                // Record for one full animation cycle
+                const duration = this.durationControl.value * 1000;
+                await new Promise(resolve => setTimeout(resolve, duration));
+                
+                this.mediaRecorder.stop();
+            }
+        }
+
+        document.addEventListener('DOMContentLoaded', () => {
+            const animator = new AIAnimator();
+        });
+    </script>
+</body>
+</html>
